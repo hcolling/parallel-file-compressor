@@ -8,7 +8,9 @@ MONITOR_SRC = src/shared/protocol.c src/monitor/statistics.c
 MONITOR_BIN = $(BUILD_DIR)/monitor
 SIMULATOR_BIN = $(BUILD_DIR)/monitor_simulator
 STATISTICS_TEST_BIN = $(BUILD_DIR)/test_statistics
-all: $(BUILD_DIR)/test_dictionary $(BUILD_DIR)/test_corpus $(MONITOR_BIN) $(SIMULATOR_BIN) $(STATISTICS_TEST_BIN)
+DECOMPRESSOR_SRC = $(DICTIONARY_SRC) src/shared/protocol.c src/decompressor/decompressor.c
+DECOMPRESSOR_BIN = $(BUILD_DIR)/decompressor
+all: $(BUILD_DIR)/test_dictionary $(BUILD_DIR)/test_corpus $(MONITOR_BIN) $(SIMULATOR_BIN) $(STATISTICS_TEST_BIN) $(DECOMPRESSOR_BIN)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -27,6 +29,9 @@ $(SIMULATOR_BIN): src/shared/protocol.c tests/monitor_simulator.c include/protoc
 
 $(STATISTICS_TEST_BIN): src/monitor/statistics.c tests/test_statistics.c include/statistics.h | $(BUILD_DIR)
 	$(CC) $(CFLAGS) src/monitor/statistics.c tests/test_statistics.c -o $@
+
+$(DECOMPRESSOR_BIN): $(DECOMPRESSOR_SRC) src/decompressor/main.c include/decompressor.h include/dictionary.h include/protocol.h | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(DECOMPRESSOR_SRC) src/decompressor/main.c -o $@ -lrt
 
 test-monitor: all
 	./$(STATISTICS_TEST_BIN)
