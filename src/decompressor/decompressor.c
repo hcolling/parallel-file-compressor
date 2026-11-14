@@ -14,9 +14,9 @@
 #define ESCAPE_BYTE      0x1B
 #define PUBLISH_INTERVAL 100
 
-/* Reads one LEB128-encoded unsigned varint from the stream.
- * Returns 0 on success and writes the decoded value into *out.
- * Returns -1 on EOF before the first byte, -2 on a malformed sequence. */
+/* Lê um varint sem sinal codificado em LEB128 do fluxo de entrada.
+ * Retorna 0 em caso de sucesso e escreve o valor decodificado em *out.
+ * Retorna -1 se encontrar EOF antes do primeiro byte, -2 se a sequência for inválida. */
 static int read_varint(FILE *stream, uint32_t *out) {
     uint32_t value = 0;
     unsigned shift = 0;
@@ -37,7 +37,7 @@ static int read_varint(FILE *stream, uint32_t *out) {
     }
 }
 
-/* Publishes the current statistics to shared memory. */
+/* Publica as estatísticas atuais na memória compartilhada. */
 static int publish(MonitorSharedState *shm_state, const MonitorStatistics *stats) {
     if (monitor_shared_publish(shm_state, stats) < 0) {
         fprintf(stderr, "[ERROR] Failed to publish statistics: %s\n",
@@ -47,8 +47,8 @@ static int publish(MonitorSharedState *shm_state, const MonitorStatistics *stats
     return 0;
 }
 
-/* Launches build/monitor as a child process.
- * Returns the child PID on success, -1 on failure. */
+/* Lança build/monitor como processo filho.
+ * Retorna o PID do filho em caso de sucesso, -1 em caso de falha. */
 static pid_t launch_monitor(const char *shm_name, MonitorSharedState *shm_state,
                              int shm_fd) {
     pid_t child = fork();
@@ -131,7 +131,7 @@ int decompressor_run(const char *dict_path,
             continue;
         }
 
-        /* Escape byte: next is either 0x00 (literal 0x1B) or a LEB128 code. */
+        /* Byte de escape: o próximo é 0x00 (literal 0x1B) ou um código LEB128. */
         uint32_t code = 0;
         int varint_result = read_varint(input, &code);
         if (varint_result == -1) {
@@ -146,7 +146,7 @@ int decompressor_run(const char *dict_path,
         }
 
         if (code == 0) {
-            /* Escaped literal 0x1B. */
+            /* 0x1B literal escapado. */
             if (fputc(ESCAPE_BYTE, output) == EOF) {
                 fprintf(stderr, "[ERROR] Write error on output file.\n");
                 decode_error = 1;
@@ -156,7 +156,7 @@ int decompressor_run(const char *dict_path,
             continue;
         }
 
-        /* Dictionary token. */
+        /* Token do dicionário. */
         const char *word = dictionary_decode(dict, code);
         if (word == NULL) {
             fprintf(stderr, "[ERROR] Unknown dictionary code %" PRIu32 ".\n", code);
@@ -176,7 +176,7 @@ int decompressor_run(const char *dict_path,
         tokens_since_publish++;
 
         if (tokens_since_publish >= PUBLISH_INTERVAL) {
-            /* Update sizes before each partial publish. */
+            /* Atualiza os tamanhos antes de cada publicação parcial. */
             stats.compressed_size = (uint64_t)ftell(input);
             stats.original_size   = stats.decompressed_size;
             if (publish(shm_state, &stats) < 0) {
@@ -198,9 +198,9 @@ int decompressor_run(const char *dict_path,
         decode_error = 1;
     }
 
-    /* Final sizes from the filesystem via ftell are not available after fclose;
-     * compressed_size was tracked by ftell during the loop for the last partial
-     * publish. Reopen to get the exact compressed file size. */
+    /* Os tamanhos finais via ftell não estão disponíveis após fclose;
+     * compressed_size foi atualizado pelo ftell durante o loop na última
+     * publicação parcial. Reabre o arquivo para obter o tamanho exato. */
     {
         FILE *in_check = fopen(input_path, "rb");
         if (in_check != NULL) {

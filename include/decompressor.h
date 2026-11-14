@@ -1,17 +1,17 @@
 #ifndef DECOMPRESSOR_H
 #define DECOMPRESSOR_H
 
-/* Decompresses a file produced by the compressor using the escape-byte +
- * LEB128 format described in docs/dictionary_format.md.
+/* Descompacta um arquivo produzido pelo compactador usando o formato
+ * byte de escape + LEB128 descrito em docs/dictionary_format.md.
  *
- * dict_path  : path to the tab-separated dictionary file.
- * input_path : path to the compressed file (.mzp).
- * output_path: path for the reconstructed output file.
+ * dict_path  : caminho para o arquivo de dicionário separado por tabulação.
+ * input_path : caminho para o arquivo compactado (.mzp).
+ * output_path: caminho para o arquivo de saída reconstruído.
  *
- * Launches build/monitor as a child process via fork + exec and publishes
- * statistics through POSIX shared memory during and after processing.
+ * Lança build/monitor como processo filho via fork + exec e publica
+ * estatísticas via memória compartilhada POSIX durante e após o processamento.
  *
- * Returns 0 on success, 1 on any error. */
+ * Retorna 0 em caso de sucesso, 1 em caso de erro. */
 int decompressor_run(const char *dict_path,
                      const char *input_path,
                      const char *output_path);
