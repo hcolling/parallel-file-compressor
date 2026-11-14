@@ -6,7 +6,7 @@
 int main(int argc, char **argv) {
     if (argc != 4) {
         fprintf(stderr,
-                "Usage: %s <dictionary> <input.mzp> <output.txt>\n",
+                "Uso: %s <dicionário> <entrada.mzp> <saída.txt>\n",
                 argv[0]);
         return 2;
     }

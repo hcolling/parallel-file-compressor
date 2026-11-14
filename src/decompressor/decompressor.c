@@ -40,7 +40,7 @@ static int read_varint(FILE *stream, uint32_t *out) {
 /* Publica as estatísticas atuais na memória compartilhada. */
 static int publish(MonitorSharedState *shm_state, const MonitorStatistics *stats) {
     if (monitor_shared_publish(shm_state, stats) < 0) {
-        fprintf(stderr, "[ERROR] Failed to publish statistics: %s\n",
+        fprintf(stderr, "[ERRO] Falha ao publicar estatísticas: %s\n",
                 strerror(errno));
         return -1;
     }
@@ -53,13 +53,13 @@ static pid_t launch_monitor(const char *shm_name, MonitorSharedState *shm_state,
                              int shm_fd) {
     pid_t child = fork();
     if (child < 0) {
-        perror("[ERROR] fork");
+        perror("[ERRO] fork");
         return -1;
     }
     if (child == 0) {
         monitor_shared_close(shm_fd, shm_state);
         execl("./build/monitor", "monitor", shm_name, (char *)NULL);
-        perror("[ERROR] exec monitor");
+        perror("[ERRO] exec monitor");
         _exit(127);
     }
     return child;
@@ -72,14 +72,14 @@ int decompressor_run(const char *dict_path,
 
     Dictionary *dict = dictionary_load(dict_path);
     if (dict == NULL) {
-        fprintf(stderr, "[ERROR] Failed to load dictionary: %s\n", dict_path);
+        fprintf(stderr, "[ERRO] Falha ao carregar o dicionário: %s\n", dict_path);
         return 1;
     }
 
     char shm_name[MONITOR_SHM_NAME_MAX];
     int len = snprintf(shm_name, sizeof(shm_name), "/pfc_decomp_%ld", (long)getpid());
     if (len < 0 || (size_t)len >= sizeof(shm_name)) {
-        fprintf(stderr, "[ERROR] Shared memory name too long.\n");
+        fprintf(stderr, "[ERRO] Nome da memória compartilhada muito longo.\n");
         dictionary_destroy(dict);
         return 1;
     }
@@ -87,7 +87,7 @@ int decompressor_run(const char *dict_path,
     int shm_fd = -1;
     MonitorSharedState *shm_state = NULL;
     if (monitor_shared_create(shm_name, &shm_fd, &shm_state) < 0) {
-        fprintf(stderr, "[ERROR] Failed to create shared memory: %s\n",
+        fprintf(stderr, "[ERRO] Falha ao criar memória compartilhada: %s\n",
                 strerror(errno));
         dictionary_destroy(dict);
         return 1;
@@ -102,14 +102,24 @@ int decompressor_run(const char *dict_path,
 
     FILE *input = fopen(input_path, "rb");
     if (input == NULL) {
-        fprintf(stderr, "[ERROR] Cannot open input file: %s\n", input_path);
+        fprintf(stderr, "[ERRO] Não foi possível abrir o arquivo de entrada: %s\n", input_path);
+        MonitorStatistics err_stats = {0};
+        err_stats.mode     = MONITOR_MODE_DECOMPRESS;
+        err_stats.finished = 1;
+        err_stats.failed   = 1;
+        publish(shm_state, &err_stats);
         goto cleanup_monitor;
     }
 
     FILE *output = fopen(output_path, "wb");
     if (output == NULL) {
-        fprintf(stderr, "[ERROR] Cannot open output file: %s\n", output_path);
+        fprintf(stderr, "[ERRO] Não foi possível abrir o arquivo de saída: %s\n", output_path);
         fclose(input);
+        MonitorStatistics err_stats = {0};
+        err_stats.mode     = MONITOR_MODE_DECOMPRESS;
+        err_stats.finished = 1;
+        err_stats.failed   = 1;
+        publish(shm_state, &err_stats);
         goto cleanup_monitor;
     }
 
@@ -123,7 +133,7 @@ int decompressor_run(const char *dict_path,
     while ((byte = fgetc(input)) != EOF) {
         if (byte != ESCAPE_BYTE) {
             if (fputc(byte, output) == EOF) {
-                fprintf(stderr, "[ERROR] Write error on output file.\n");
+                fprintf(stderr, "[ERRO] Falha ao gravar no arquivo de saída.\n");
                 decode_error = 1;
                 break;
             }
@@ -135,12 +145,12 @@ int decompressor_run(const char *dict_path,
         uint32_t code = 0;
         int varint_result = read_varint(input, &code);
         if (varint_result == -1) {
-            fprintf(stderr, "[ERROR] Unexpected EOF after escape byte.\n");
+            fprintf(stderr, "[ERRO] EOF inesperado após byte de escape.\n");
             decode_error = 1;
             break;
         }
         if (varint_result == -2) {
-            fprintf(stderr, "[ERROR] Malformed LEB128 varint in input.\n");
+            fprintf(stderr, "[ERRO] Varint LEB128 inválido no arquivo de entrada.\n");
             decode_error = 1;
             break;
         }
@@ -148,7 +158,7 @@ int decompressor_run(const char *dict_path,
         if (code == 0) {
             /* 0x1B literal escapado. */
             if (fputc(ESCAPE_BYTE, output) == EOF) {
-                fprintf(stderr, "[ERROR] Write error on output file.\n");
+                fprintf(stderr, "[ERRO] Falha ao gravar no arquivo de saída.\n");
                 decode_error = 1;
                 break;
             }
@@ -159,14 +169,14 @@ int decompressor_run(const char *dict_path,
         /* Token do dicionário. */
         const char *word = dictionary_decode(dict, code);
         if (word == NULL) {
-            fprintf(stderr, "[ERROR] Unknown dictionary code %" PRIu32 ".\n", code);
+            fprintf(stderr, "[ERRO] Código de dicionário desconhecido %" PRIu32 ".\n", code);
             decode_error = 1;
             break;
         }
 
         size_t word_len = strlen(word);
         if (fwrite(word, 1, word_len, output) != word_len) {
-            fprintf(stderr, "[ERROR] Write error on output file.\n");
+            fprintf(stderr, "[ERRO] Falha ao gravar no arquivo de saída.\n");
             decode_error = 1;
             break;
         }
@@ -188,13 +198,13 @@ int decompressor_run(const char *dict_path,
     }
 
     if (!decode_error && ferror(input)) {
-        fprintf(stderr, "[ERROR] Read error on input file.\n");
+        fprintf(stderr, "[ERRO] Falha na leitura do arquivo de entrada.\n");
         decode_error = 1;
     }
 
     fclose(input);
     if (fclose(output) != 0 && !decode_error) {
-        fprintf(stderr, "[ERROR] Failed to flush output file.\n");
+        fprintf(stderr, "[ERRO] Falha ao finalizar a gravação do arquivo de saída.\n");
         decode_error = 1;
     }
 
@@ -222,14 +232,14 @@ cleanup_monitor:
     {
         int status = 0;
         if (waitpid(monitor_pid, &status, 0) < 0) {
-            perror("[ERROR] waitpid");
+            perror("[ERRO] waitpid");
             exit_code = 1;
         } else if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
             exit_code = 1;
         }
     }
     if (monitor_shared_destroy(shm_name, shm_fd, shm_state) < 0) {
-        perror("[ERROR] shared memory cleanup");
+        perror("[ERRO] limpeza da memória compartilhada");
         exit_code = 1;
     }
     dictionary_destroy(dict);
