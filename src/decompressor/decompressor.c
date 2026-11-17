@@ -14,9 +14,9 @@
 #define ESCAPE_BYTE      0x1B
 #define PUBLISH_INTERVAL 100
 
-/* Lê um varint sem sinal codificado em LEB128 do fluxo de entrada.
- * Retorna 0 em caso de sucesso e escreve o valor decodificado em *out.
- * Retorna -1 se encontrar EOF antes do primeiro byte, -2 se a sequência for inválida. */
+/* Lê um código em LEB128 e guarda o resultado em *out.
+ * Retorna 0 se der certo, -1 se o arquivo acabou antes do código
+ * e -2 se a sequência estiver inválida ou incompleta. */
 static int read_varint(FILE *stream, uint32_t *out) {
     uint32_t value = 0;
     unsigned shift = 0;
@@ -37,7 +37,7 @@ static int read_varint(FILE *stream, uint32_t *out) {
     }
 }
 
-/* Publica as estatísticas atuais na memória compartilhada. */
+/* Envia as estatísticas atuais ao Monitor pela memória compartilhada. */
 static int publish(MonitorSharedState *shm_state, const MonitorStatistics *stats) {
     if (monitor_shared_publish(shm_state, stats) < 0) {
         fprintf(stderr, "[ERRO] Falha ao publicar estatísticas: %s\n",
@@ -47,19 +47,18 @@ static int publish(MonitorSharedState *shm_state, const MonitorStatistics *stats
     return 0;
 }
 
-/* Lança build/monitor como processo filho.
- * Retorna o PID do filho em caso de sucesso, -1 em caso de falha. */
+/* Inicia o Monitor em outro processo. Retorna o PID ou -1 se houver erro. */
 static pid_t launch_monitor(const char *shm_name, MonitorSharedState *shm_state,
                              int shm_fd) {
     pid_t child = fork();
     if (child < 0) {
-        perror("[ERRO] fork");
+        perror("[ERRO] Falha ao criar o processo do Monitor");
         return -1;
     }
     if (child == 0) {
         monitor_shared_close(shm_fd, shm_state);
         execl("./build/monitor", "monitor", shm_name, (char *)NULL);
-        perror("[ERRO] exec monitor");
+        perror("[ERRO] Falha ao iniciar o Monitor");
         _exit(127);
     }
     return child;
@@ -141,22 +140,22 @@ int decompressor_run(const char *dict_path,
             continue;
         }
 
-        /* Byte de escape: o próximo é 0x00 (literal 0x1B) ou um código LEB128. */
+        /* Após o escape, zero representa o byte 0x1B; os demais valores são códigos. */
         uint32_t code = 0;
         int varint_result = read_varint(input, &code);
         if (varint_result == -1) {
-            fprintf(stderr, "[ERRO] EOF inesperado após byte de escape.\n");
+            fprintf(stderr, "[ERRO] O arquivo terminou logo após o byte de escape.\n");
             decode_error = 1;
             break;
         }
         if (varint_result == -2) {
-            fprintf(stderr, "[ERRO] Varint LEB128 inválido no arquivo de entrada.\n");
+            fprintf(stderr, "[ERRO] Código LEB128 inválido no arquivo de entrada.\n");
             decode_error = 1;
             break;
         }
 
         if (code == 0) {
-            /* 0x1B literal escapado. */
+            /* Recupera o byte 0x1B do texto original. */
             if (fputc(ESCAPE_BYTE, output) == EOF) {
                 fprintf(stderr, "[ERRO] Falha ao gravar no arquivo de saída.\n");
                 decode_error = 1;
@@ -166,7 +165,7 @@ int decompressor_run(const char *dict_path,
             continue;
         }
 
-        /* Token do dicionário. */
+        /* Busca a palavra correspondente ao código. */
         const char *word = dictionary_decode(dict, code);
         if (word == NULL) {
             fprintf(stderr, "[ERRO] Código de dicionário desconhecido %" PRIu32 ".\n", code);
@@ -186,7 +185,7 @@ int decompressor_run(const char *dict_path,
         tokens_since_publish++;
 
         if (tokens_since_publish >= PUBLISH_INTERVAL) {
-            /* Atualiza os tamanhos antes de cada publicação parcial. */
+            /* Atualiza os tamanhos antes de enviar o progresso ao Monitor. */
             stats.compressed_size = (uint64_t)ftell(input);
             stats.original_size   = stats.decompressed_size;
             if (publish(shm_state, &stats) < 0) {
@@ -208,9 +207,7 @@ int decompressor_run(const char *dict_path,
         decode_error = 1;
     }
 
-    /* Os tamanhos finais via ftell não estão disponíveis após fclose;
-     * compressed_size foi atualizado pelo ftell durante o loop na última
-     * publicação parcial. Reabre o arquivo para obter o tamanho exato. */
+    /* Reabre a entrada para medir o tamanho final do arquivo compactado. */
     {
         FILE *in_check = fopen(input_path, "rb");
         if (in_check != NULL) {
@@ -232,14 +229,14 @@ cleanup_monitor:
     {
         int status = 0;
         if (waitpid(monitor_pid, &status, 0) < 0) {
-            perror("[ERRO] waitpid");
+            perror("[ERRO] Falha ao aguardar o Monitor");
             exit_code = 1;
         } else if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
             exit_code = 1;
         }
     }
     if (monitor_shared_destroy(shm_name, shm_fd, shm_state) < 0) {
-        perror("[ERRO] limpeza da memória compartilhada");
+        perror("[ERRO] Falha ao liberar a memória compartilhada");
         exit_code = 1;
     }
     dictionary_destroy(dict);

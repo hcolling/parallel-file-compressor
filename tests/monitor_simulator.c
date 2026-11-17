@@ -18,7 +18,7 @@ static void delay(void) {
 int main(int argc, char **argv) {
     if (argc != 2 || (strcmp(argv[1], "compress") != 0 &&
                       strcmp(argv[1], "decompress") != 0)) {
-        fprintf(stderr, "Usage: %s <compress|decompress>\n", argv[0]);
+        fprintf(stderr, "Uso: %s <compress|decompress> (compactar|descompactar)\n", argv[0]);
         return 2;
     }
     char name[MONITOR_SHM_NAME_MAX];
@@ -28,20 +28,20 @@ int main(int argc, char **argv) {
     int fd = -1;
     MonitorSharedState *state = NULL;
     if (monitor_shared_create(name, &fd, &state) < 0) {
-        fprintf(stderr, "[ERROR] Failed to create shared memory: %s\n",
+        fprintf(stderr, "[ERRO] Falha ao criar a memória compartilhada: %s\n",
                 strerror(errno));
         return 1;
     }
     pid_t child = fork();
     if (child < 0) {
-        perror("[ERROR] fork");
+        perror("[ERRO] Falha ao criar o processo do Monitor");
         monitor_shared_destroy(name, fd, state);
         return 1;
     }
     if (child == 0) {
         monitor_shared_close(fd, state);
         execl("./build/monitor", "monitor", name, (char *)NULL);
-        perror("[ERROR] exec monitor");
+        perror("[ERRO] Falha ao iniciar o Monitor");
         _exit(127);
     }
     MonitorStatistics stats = {0};
@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
                                   (uint64_t)(step * 646) : 0;
         stats.finished = step == 3 ? 1u : 0u;
         if (monitor_shared_publish(state, &stats) < 0) {
-            perror("[ERROR] publish");
+            perror("[ERRO] Falha ao enviar as estatísticas");
             stats.failed = 1;
             stats.finished = 1;
             monitor_shared_publish(state, &stats);
@@ -69,13 +69,13 @@ int main(int argc, char **argv) {
     }
     int status = 0;
     if (waitpid(child, &status, 0) < 0) {
-        perror("[ERROR] waitpid");
+        perror("[ERRO] Falha ao aguardar o Monitor");
         status = -1;
     }
     int cleanup_result = monitor_shared_destroy(name, fd, state);
-    if (cleanup_result < 0) perror("[ERROR] shared memory cleanup");
+    if (cleanup_result < 0) perror("[ERRO] Falha ao liberar a memória compartilhada");
     if (status == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0 ||
         cleanup_result < 0) return 1;
-    puts("[INFO] Monitor simulator completed successfully.");
+    puts("[INFO] Simulação do Monitor concluída com sucesso.");
     return 0;
 }

@@ -25,24 +25,24 @@ int statistics_validate(const MonitorStatistics *statistics) {
 void statistics_print(const MonitorStatistics *statistics) {
     if (statistics == NULL) return;
     const char *mode = statistics->mode == MONITOR_MODE_COMPRESS ?
-                       "Compression" : "Decompression";
-    printf("[MONITOR] Mode: %s | Revision: %" PRIu64 "\n",
+                       "Compactação" : "Descompactação";
+    printf("[MONITOR] Modo: %s | Atualização: %" PRIu64 "\n",
            mode, statistics->revision);
-    printf("[MONITOR] Words read: %" PRIu64
-           " | Compressed: %" PRIu64
-           " | Not found: %" PRIu64 "\n",
+    printf("[MONITOR] Palavras lidas: %" PRIu64
+           " | Compactadas: %" PRIu64
+           " | Não encontradas: %" PRIu64 "\n",
            statistics->words_read, statistics->words_compressed,
            statistics->words_not_found);
-    printf("[MONITOR] Original size: %" PRIu64
-           " bytes | Compressed size: %" PRIu64 " bytes\n",
+    printf("[MONITOR] Tamanho original: %" PRIu64
+           " bytes | Tamanho compactado: %" PRIu64 " bytes\n",
            statistics->original_size, statistics->compressed_size);
     if (statistics->mode == MONITOR_MODE_DECOMPRESS)
-        printf("[MONITOR] Decompressed size: %" PRIu64 " bytes\n",
+        printf("[MONITOR] Tamanho descompactado: %" PRIu64 " bytes\n",
                statistics->decompressed_size);
-    printf("[MONITOR] Compression: %.2f%%\n",
+    printf("[MONITOR] Compressão: %.2f%%\n",
            statistics_compression_percent(statistics));
     if (statistics->finished)
-        printf("[MONITOR] Execution %s.\n",
-               statistics->failed ? "failed" : "completed successfully");
+        printf("[MONITOR] Execução %s.\n",
+               statistics->failed ? "encerrada com erro" : "concluída com sucesso");
     fflush(stdout);
 }

@@ -26,10 +26,9 @@ typedef struct {
     uint32_t failed;
 } MonitorStatistics;
 
-/* Shared layout is initialized by the owner before the monitor attaches.
- * mutex protects statistics; changed wakes the monitor after publication.
- * Both semaphores must be initialized with pshared = 1.
- */
+/* O processo que cria a memória prepara os dados antes de iniciar o Monitor.
+ * mutex protege as estatísticas e changed avisa quando elas mudam.
+ * Os semáforos usam pshared = 1 para funcionar entre processos. */
 typedef struct {
     uint32_t version;
     sem_t mutex;
@@ -37,24 +36,23 @@ typedef struct {
     MonitorStatistics stats;
 } MonitorSharedState;
 
-/* Creates and initializes a POSIX shared-memory region.
- * The caller owns cleanup (munmap, sem_destroy and shm_unlink).
- * Use a unique name for concurrent runs. */
+/* Cria a memória compartilhada. Use um nome diferente para cada execução.
+ * Quem cria também deve liberar os recursos no final. */
 int monitor_shared_create(const char *name, int *fd, MonitorSharedState **state);
 
-/* Opens an existing region; does not own its semaphores or shm_unlink. */
+/* Abre uma memória existente sem assumir a responsabilidade de destruí-la. */
 int monitor_shared_open(const char *name, int *fd, MonitorSharedState **state);
 
-/* Publishes one complete snapshot and notifies the monitor.
- * The owner should set finished = 1 on its final update.
- * revision is assigned automatically. */
+/* Atualiza as estatísticas e avisa o Monitor.
+ * Na última atualização, use finished = 1.
+ * O número da atualização (revision) é incrementado automaticamente. */
 int monitor_shared_publish(MonitorSharedState *state,
                            const MonitorStatistics *statistics);
 
-/* Releases a mapping and descriptor, without unlinking. */
+/* Fecha o acesso à memória, mas não remove a memória compartilhada. */
 void monitor_shared_close(int fd, MonitorSharedState *state);
 
-/* Only the creator should call this after all processes have exited. */
+/* Quem criou a memória deve destruí-la depois que os outros processos saírem. */
 int monitor_shared_destroy(const char *name, int fd, MonitorSharedState *state);
 
 #endif

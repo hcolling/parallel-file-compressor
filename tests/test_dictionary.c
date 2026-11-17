@@ -22,7 +22,7 @@ static char *write_temp_file(const char *content) {
 }
 
 static void test_valid_dictionary(void) {
-    char *path = write_temp_file("# Example\n1\thello\n2\tworld\n42\tcafé\n");
+    char *path = write_temp_file("# Exemplo\n1\thello\n2\tworld\n42\tcafé\n");
     Dictionary *dictionary = dictionary_load(path);
     assert(dictionary != NULL);
     assert(dictionary_size(dictionary) == 3);
@@ -60,6 +60,6 @@ int main(void) {
     test_invalid_dictionary("1\t\n");
     test_invalid_dictionary("1\tbad\textra\n");
     assert(dictionary_load("/path/that/does/not/exist") == NULL);
-    puts("[INFO] All dictionary tests passed.");
+    puts("[INFO] Todos os testes do dicionário passaram.");
     return 0;
 }
