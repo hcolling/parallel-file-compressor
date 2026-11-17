@@ -14,13 +14,13 @@ static int wait_notification(sem_t *sem) {
     return 0;
 }
 
-/* Processes snapshots until the producer publishes a final status.
- * Multiple rapid updates may be coalesced, but the final state is preserved. */
+/* Mostra as estatísticas até receber a atualização final.
+ * Atualizações muito próximas podem ser agrupadas, mas a última é preservada. */
 int monitor_run(const char *name) {
     int fd = -1;
     MonitorSharedState *state = NULL;
     if (monitor_shared_open(name, &fd, &state) < 0) {
-        fprintf(stderr, "[ERROR] Failed to attach monitor: %s\n",
+        fprintf(stderr, "[ERRO] Falha ao conectar o Monitor à memória compartilhada: %s\n",
                 strerror(errno));
         return 1;
     }
@@ -28,13 +28,13 @@ int monitor_run(const char *name) {
     int result = 0;
     for (;;) {
         if (wait_notification(&state->changed) < 0) {
-            fprintf(stderr, "[ERROR] Failed to wait for update: %s\n",
+            fprintf(stderr, "[ERRO] Falha ao aguardar uma atualização: %s\n",
                     strerror(errno));
             result = 1;
             break;
         }
         if (wait_notification(&state->mutex) < 0) {
-            fprintf(stderr, "[ERROR] Failed to lock statistics: %s\n",
+            fprintf(stderr, "[ERRO] Falha ao proteger o acesso às estatísticas: %s\n",
                     strerror(errno));
             result = 1;
             break;
@@ -47,7 +47,7 @@ int monitor_run(const char *name) {
         if (snapshot.revision == last_revision) continue;
         last_revision = snapshot.revision;
         if (!statistics_validate(&snapshot)) {
-            fprintf(stderr, "[ERROR] Invalid statistics snapshot.\n");
+            fprintf(stderr, "[ERRO] Estatísticas inválidas.\n");
             result = 1;
             break;
         }

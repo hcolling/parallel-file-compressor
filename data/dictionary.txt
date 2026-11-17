@@ -1,4 +1,4 @@
-# Code<TAB>word; stable IDs generated from the provided test inputs.
+# Código<TAB>palavra; códigos fixos gerados a partir dos textos de teste.
 1	Assim
 2	Este
 3	O

@@ -21,6 +21,6 @@ int main(void) {
     assert(statistics_validate(&stats));
     stats.mode = 99;
     assert(!statistics_validate(&stats));
-    puts("[INFO] All monitor statistics tests passed.");
+    puts("[INFO] Todos os testes das estatísticas do Monitor passaram.");
     return 0;
 }

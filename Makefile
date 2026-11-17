@@ -46,6 +46,8 @@ test-monitor: all
 demo-monitor: all
 	./$(SIMULATOR_BIN) compress
 
+# Compacta e descompacta os dois arquivos com o Monitor.
+# Usa cmp para conferir se o resultado é igual ao original.
 demo: demo-one demo-two
 
 demo-one: all

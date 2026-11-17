@@ -37,7 +37,7 @@ static void check_file(const Dictionary *dictionary, const char *path) {
         ++count;
     }
     assert(fclose(input) == 0);
-    printf("[INFO] Verified %zu tokens in %s.\n", count, path);
+    printf("[INFO] Verificadas %zu palavras em %s.\n", count, path);
 }
 
 int main(int argc, char **argv) {
@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
     assert(dictionary != NULL);
     check_file(dictionary, argv[2]);
     check_file(dictionary, argv[3]);
-    printf("[INFO] Verified dictionary with %zu entries.\n",
+    printf("[INFO] Verificado o dicionário com %zu entradas.\n",
            dictionary_size(dictionary));
     dictionary_destroy(dictionary);
     return 0;

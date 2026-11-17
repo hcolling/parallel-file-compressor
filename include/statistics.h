@@ -3,14 +3,14 @@
 
 #include "protocol.h"
 
-/* Returns 0 when the original size is zero, avoiding division by zero.
- * A negative result means the compressed file is larger than the original. */
+/* Calcula o percentual de compressão. Retorna zero se o original estiver vazio.
+ * Um resultado negativo indica que o arquivo compactado ficou maior. */
 double statistics_compression_percent(const MonitorStatistics *statistics);
 
-/* Validates counter consistency for the selected execution mode. */
+/* Confere se as estatísticas são válidas para o modo escolhido. */
 int statistics_validate(const MonitorStatistics *statistics);
 
-/* Prints an English-language status snapshot. */
+/* Mostra as estatísticas atuais. */
 void statistics_print(const MonitorStatistics *statistics);
 
 #endif

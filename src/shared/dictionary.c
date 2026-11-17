@@ -112,7 +112,7 @@ Dictionary *dictionary_load(const char *path) {
     }
     FILE *file = fopen(path, "rb");
     if (file == NULL) {
-        fprintf(stderr, "[ERROR] Cannot open dictionary: %s\n", path);
+        fprintf(stderr, "[ERRO] Não foi possível abrir o dicionário: %s\n", path);
         return NULL;
     }
     Dictionary *dictionary = calloc(1, sizeof(*dictionary));
@@ -151,13 +151,13 @@ Dictionary *dictionary_load(const char *path) {
             }
         }
         if (!valid) {
-            fprintf(stderr, "[ERROR] Invalid dictionary entry at line %zu\n",
+            fprintf(stderr, "[ERRO] Entrada inválida no dicionário, linha %zu.\n",
                     line_number);
             break;
         }
     }
     if (ferror(file)) {
-        fprintf(stderr, "[ERROR] Failed to read dictionary\n");
+        fprintf(stderr, "[ERRO] Falha ao ler o dicionário.\n");
         valid = 0;
     }
     free(line);
