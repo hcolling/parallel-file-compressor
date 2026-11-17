@@ -34,9 +34,10 @@ possui colisões entre símbolos e caracteres literais, além de transformar
 palavras em minúsculas. Por isso, a implementação não promete compatibilidade
 binária com arquivos `.mzp` gerados por aquele programa.
 
-**Observação:** o anexo recebido nesta etapa continha `mini_zip.c`,
-`entrada.txt` e `entrada2.txt`, mas não continha o PDF do enunciado. Os
-requisitos específicos do PDF ainda precisam ser confirmados.
+O dicionário em `data/dictionary.txt` foi ampliado para cobrir **todas** as
+palavras dos dois textos de teste (184 entradas = 184 palavras únicas do
+corpus), atendendo ao desafio do enunciado. O compactador reporta
+`Not found: 0` nos dois cenários, e `test_corpus` confirma a cobertura.
 
 ## Monitor
 
@@ -71,3 +72,47 @@ A integração com os processos das Pessoas A e B ainda depende da implementaç�
 do envio das estatísticas reais, conforme o protocolo.
 
 Requer Linux com suporte a POSIX shared memory e semáforos.
+
+## Compactador
+
+O Compactador foi implementado como um processo Linux que roda **três threads
+em paralelo**, correspondendo à parte da Pessoa A. É a evolução paralela da
+lógica de `mini_zip.c`, mantendo a mesma regra de tokenização (letras, dígitos
+e `_` formam palavras; o resto são separadores), mas gerando o formato
+reversível `0x1B` + LEB128 acordado com o Descompactador.
+
+As três threads se comunicam por **filas limitadas** (buffer limitado clássico)
+com `pthread_mutex_t` e variáveis de condição:
+
+- **Leitura**: lê blocos do arquivo de entrada e os corta em um separador, de
+  modo que nenhuma palavra seja dividida entre unidades.
+- **Compactação**: consulta o dicionário e codifica cada palavra como token
+  (apenas quando o token é menor que a palavra) ou grava a palavra literal,
+  preservando espaços e pontuação.
+- **Gravação**: escreve as unidades codificadas no arquivo `.mzp` de saída.
+
+A thread principal é dona da memória compartilhada POSIX, lança `build/monitor`
+via `fork` + `exec` e publica as estatísticas reais (palavras lidas,
+compactadas, não encontradas e tamanhos) durante e ao final do processamento.
+
+### Executar o Compactador
+
+```bash
+./build/compressor data/dictionary.txt tests/fixtures/input_one.txt saida.mzp
+```
+
+O round-trip completo (compactar e depois descompactar, conferindo byte a byte)
+faz parte de `make test`.
+
+### Ver os dois cenários
+
+`make demo` roda os dois arquivos de teste no mesmo estilo do `make test`: para
+cada um executa a compactação (Compactador + Monitor, com estatísticas reais), a
+descompactação (Descompactador + Monitor) e a conferência `cmp` do resultado
+contra o original.
+
+```bash
+make demo          # os dois cenários
+make demo-one      # apenas tests/fixtures/input_one.txt
+make demo-two      # apenas tests/fixtures/input_two.txt
+```
