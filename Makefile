@@ -46,9 +46,6 @@ test-monitor: all
 demo-monitor: all
 	./$(SIMULATOR_BIN) compress
 
-# Roda os dois cenários de teste no mesmo estilo do alvo test: para cada arquivo
-# executa Compactador + Monitor e Descompactador + Monitor (com estatísticas
-# reais) e confirma com cmp que o round-trip é idêntico ao original.
 demo: demo-one demo-two
 
 demo-one: all

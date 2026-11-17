@@ -13,10 +13,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define ESCAPE_BYTE     0x1B // Marca um código no fluxo
-#define READ_BLOCK      4096 // Bytes lidos por vez pela thread de leitura
-#define QUEUE_CAPACITY  8    // limita o uso de memória
-#define PUBLISH_INTERVAL 50  // Unidades gravadas entre publicações ao Monitor
+#define ESCAPE_BYTE     0x1B // marca um codigo no meio dos bytes
+#define READ_BLOCK      4096 // quanto a thread de leitura le por vez
+#define QUEUE_CAPACITY  8    // limita o uso de memoria
+#define PUBLISH_INTERVAL 50  // de quantas em quantas unidades avisa o Monitor
 
 static int is_word_byte(int byte) {
     return (byte >= 'A' && byte <= 'Z') ||
@@ -25,7 +25,7 @@ static int is_word_byte(int byte) {
            byte == '_';
 }
 
-// Uma unidade que anda pelas filas. Na entrada data = texto puro; na saida
+// uma unidade que anda pelas filas. na entrada data = texto puro; na saida
 // vem codificado
 typedef struct {
     unsigned char *data;
@@ -33,7 +33,7 @@ typedef struct {
     int is_last;
 } WorkUnit;
 
-// Fila circular com tamanho fixo
+// fila circular com tamanho fixo
 typedef struct {
     WorkUnit *slots[QUEUE_CAPACITY];
     size_t head;
@@ -44,7 +44,7 @@ typedef struct {
     pthread_cond_t not_empty;
 } BoundedQueue;
 
-// Contadores que as 3 threads mexem com mutex proprio
+// contadores que as 3 threads mexem, cada um com seu mutex
 typedef struct {
     pthread_mutex_t mutex;
     uint64_t words_read;
@@ -52,7 +52,6 @@ typedef struct {
     uint64_t words_not_found;
     uint64_t original_size;
     uint64_t compressed_size;
-    uint64_t units_compressed; // saber quando publicar
 } SharedStats;
 
 // o que as threads compartilham
@@ -94,7 +93,7 @@ static void queue_destroy(BoundedQueue *queue) {
     pthread_mutex_destroy(&queue->mutex);
 }
 
-// Insere; espera se a fila estiver cheia.
+// coloca na fila; se tiver cheia, espera abrir espaco
 static void queue_push(BoundedQueue *queue, WorkUnit *unit) {
     pthread_mutex_lock(&queue->mutex);
     while (queue->count == QUEUE_CAPACITY) {
@@ -107,7 +106,7 @@ static void queue_push(BoundedQueue *queue, WorkUnit *unit) {
     pthread_mutex_unlock(&queue->mutex);
 }
 
-// Retira; espera se a fila estiver vazia.
+// tira da fila; se tiver vazia, espera chegar alguma coisa
 static WorkUnit *queue_pop(BoundedQueue *queue) {
     pthread_mutex_lock(&queue->mutex);
     while (queue->count == 0) {
@@ -123,8 +122,8 @@ static WorkUnit *queue_pop(BoundedQueue *queue) {
 
 //-------- UNIDADES DE TRABALHO --------
 
-// Cria uma unidade copiando `length` bytes de `data`. Se data == NULL so
-// reserva o espaco (quem chama preenche depois).
+// cria uma unidade copiando `length` bytes de `data`. se data == NULL so
+// reserva o espaco (quem chamou preenche depois)
 static WorkUnit *unit_create(const unsigned char *data, size_t length,
                              int is_last) {
     WorkUnit *unit = malloc(sizeof(*unit));
@@ -155,7 +154,7 @@ static void unit_destroy(WorkUnit *unit) {
     }
 }
 
-// Marca erro (pode ser chamado por qualquer thread).
+// marca que deu erro (qualquer thread pode chamar)
 static void flag_error(CompressorContext *ctx) {
     pthread_mutex_lock(&ctx->error_mutex);
     ctx->error = 1;
@@ -172,7 +171,7 @@ static int has_error(CompressorContext *ctx) {
 
 //-------- LOGICA DE COMPACTACAO --------
 
-// Buffer que cresce sozinho, usado pra montar a saida codificada.
+// buffer que cresce sozinho, usado pra montar a saida codificada
 typedef struct {
     unsigned char *data;
     size_t length;
@@ -190,11 +189,11 @@ static int buffer_reserve(ByteBuffer *buffer, size_t extra) {
         }
         capacity *= 2;
     }
-    unsigned char *grown = realloc(buffer->data, capacity);
-    if (grown == NULL) {
+    unsigned char *novo = realloc(buffer->data, capacity);
+    if (novo == NULL) {
         return -1;
     }
-    buffer->data = grown;
+    buffer->data = novo;
     buffer->capacity = capacity;
     return 0;
 }
@@ -207,13 +206,12 @@ static int buffer_put(ByteBuffer *buffer, unsigned char byte) {
     return 0;
 }
 
-/* Grava `0x1B` seguido do código em LEB128 sem sinal. Espelha exatamente a
- * forma que read_varint() no decompressor consome. */
+// grava 0x1B + o codigo. tem que bater com o jeito que o decompressor le
 static int buffer_put_token(ByteBuffer *buffer, uint32_t code) {
     if (buffer_put(buffer, ESCAPE_BYTE) < 0) {
         return -1;
     }
-    /* LEB128: sete bits de carga por byte; bit alto indica continuação. */
+    // 7 bits por byte, bit mais alto diz se ainda tem mais byte depois
     do {
         unsigned char chunk = (unsigned char)(code & 0x7F);
         code >>= 7;
@@ -227,7 +225,7 @@ static int buffer_put_token(ByteBuffer *buffer, uint32_t code) {
     return 0;
 }
 
-/* Grava uma palavra literal byte a byte, escapando 0x1B como 0x1B 0x00. */
+// grava a palavra do jeito que ela e, mas se aparecer 0x1B tem que virar 0x1B 0x00
 static int buffer_put_literal_word(ByteBuffer *buffer,
                                     const unsigned char *word, size_t length) {
     for (size_t i = 0; i < length; ++i) {
@@ -243,9 +241,9 @@ static int buffer_put_literal_word(ByteBuffer *buffer,
     return 0;
 }
 
-/* Comprimento em bytes do token LEB128 para um dado código. */
+// quantos bytes o token ocupa (pra decidir se vale a pena compactar)
 static size_t token_length(uint32_t code) {
-    size_t length = 1; /* byte de escape */
+    size_t length = 1; // o byte de escape
     do {
         ++length;
         code >>= 7;
@@ -253,9 +251,8 @@ static size_t token_length(uint32_t code) {
     return length;
 }
 
-/* Resolve uma palavra acumulada e a grava no buffer de saída, atualizando as
- * estatísticas. Emite um token apenas se ele for estritamente menor que a
- * palavra literal; caso contrário grava a palavra literal. */
+// pega a palavra que a gente juntou e grava na saida, atualizando os contadores.
+// so troca pelo token se ele ficar menor que a palavra, senao grava literal
 static int emit_word(CompressorContext *ctx, ByteBuffer *out,
                      const unsigned char *word, size_t word_len,
                      uint64_t *words_read, uint64_t *words_compressed,
@@ -278,13 +275,12 @@ static int emit_word(CompressorContext *ctx, ByteBuffer *out,
     if (!found) {
         ++(*words_not_found);
     }
-    /* Palavra sem código, ou cujo token não seria menor: grava literal. */
+    // nao achou no dicionario, ou o token nao compensa: grava a palavra mesmo
     return buffer_put_literal_word(out, word, word_len);
 }
 
-/* Codifica uma unidade de entrada inteira. Como a thread de leitura corta as
- * unidades em um separador, nenhuma palavra cruza a fronteira: a varredura
- * pode começar e terminar dentro da unidade sem estado entre unidades. */
+// codifica uma unidade inteira. como o reader corta sempre num separador,
+// nenhuma palavra fica partida no meio, entao da pra processar unidade por unidade
 static int encode_unit(CompressorContext *ctx, const WorkUnit *in,
                        ByteBuffer *out) {
     uint64_t words_read = 0;
@@ -303,7 +299,7 @@ static int encode_unit(CompressorContext *ctx, const WorkUnit *in,
                 return -1;
             }
         }
-        /* Separador copiado literalmente (escapando 0x1B, se ocorrer). */
+        // separador vai do jeito que ta (escapando o 0x1B se cair aqui)
         if (in->data[i] == ESCAPE_BYTE) {
             if (buffer_put(out, ESCAPE_BYTE) < 0 || buffer_put(out, 0x00) < 0) {
                 return -1;
@@ -313,7 +309,7 @@ static int encode_unit(CompressorContext *ctx, const WorkUnit *in,
         }
         word_start = i + 1;
     }
-    /* Palavra final que termina exatamente no fim da unidade. */
+    // palavra que termina bem no fim da unidade
     if (i > word_start) {
         if (emit_word(ctx, out, in->data + word_start, i - word_start,
                       &words_read, &words_compressed, &words_not_found) < 0) {
@@ -321,35 +317,32 @@ static int encode_unit(CompressorContext *ctx, const WorkUnit *in,
         }
     }
 
-    /* Acumula as estatísticas desta unidade sob o mutex. */
+    // soma os contadores dessa unidade (com mutex porque as threads mexem junto)
     pthread_mutex_lock(&ctx->stats.mutex);
     ctx->stats.words_read += words_read;
     ctx->stats.words_compressed += words_compressed;
     ctx->stats.words_not_found += words_not_found;
-    ++ctx->stats.units_compressed;
     pthread_mutex_unlock(&ctx->stats.mutex);
     return 0;
 }
 
-/* ------------------------------------------------------------------ */
-/* Publicação de estatísticas no Monitor                               */
-/* ------------------------------------------------------------------ */
+//-------- PUBLICACAO NO MONITOR --------
 
-/* Monta um snapshot a partir das estatísticas compartilhadas e o publica. */
+// monta a foto das estatisticas e manda pro Monitor
 static int publish_snapshot(CompressorContext *ctx, int finished, int failed) {
-    MonitorStatistics snapshot = {0};
-    snapshot.mode = MONITOR_MODE_COMPRESS;
+    MonitorStatistics stats = {0};
+    stats.mode = MONITOR_MODE_COMPRESS;
     pthread_mutex_lock(&ctx->stats.mutex);
-    snapshot.words_read = ctx->stats.words_read;
-    snapshot.words_compressed = ctx->stats.words_compressed;
-    snapshot.words_not_found = ctx->stats.words_not_found;
-    snapshot.original_size = ctx->stats.original_size;
-    snapshot.compressed_size = ctx->stats.compressed_size;
+    stats.words_read = ctx->stats.words_read;
+    stats.words_compressed = ctx->stats.words_compressed;
+    stats.words_not_found = ctx->stats.words_not_found;
+    stats.original_size = ctx->stats.original_size;
+    stats.compressed_size = ctx->stats.compressed_size;
     pthread_mutex_unlock(&ctx->stats.mutex);
-    snapshot.finished = finished ? 1u : 0u;
-    snapshot.failed = failed ? 1u : 0u;
+    stats.finished = finished ? 1u : 0u;
+    stats.failed = failed ? 1u : 0u;
 
-    if (monitor_shared_publish(ctx->shm_state, &snapshot) < 0) {
+    if (monitor_shared_publish(ctx->shm_state, &stats) < 0) {
         fprintf(stderr, "[ERRO] Falha ao publicar estatísticas: %s\n",
                 strerror(errno));
         return -1;
@@ -357,20 +350,17 @@ static int publish_snapshot(CompressorContext *ctx, int finished, int failed) {
     return 0;
 }
 
-/* ------------------------------------------------------------------ */
-/* Threads                                                             */
-/* ------------------------------------------------------------------ */
+//-------- THREADS --------
 
-/* Thread de leitura: lê blocos de tamanho fixo e os quebra no último byte
- * separador, carregando a palavra parcial restante para o próximo bloco.
- * Isso garante que nenhuma palavra seja dividida entre unidades. */
+// thread de leitura: le blocos de tamanho fixo e corta no ultimo separador,
+// guardando o pedaco de palavra que sobrou pro proximo bloco. assim nenhuma
+// palavra fica dividida entre unidades
 static void *reader_thread(void *arg) {
     CompressorContext *ctx = arg;
     unsigned char block[READ_BLOCK];
 
-    /* Buffer dinâmico que acumula uma palavra parcial entre blocos. Cresce
-     * conforme necessário, então nunca estoura, mesmo para palavras maiores
-     * que um bloco. */
+    // buffer que vai juntando a palavra parcial entre um bloco e outro. cresce
+    // conforme precisa, entao nao estoura nem com palavra maior que um bloco
     ByteBuffer carry = {0};
 
     for (;;) {
@@ -379,24 +369,24 @@ static void *reader_thread(void *arg) {
         }
         size_t got = fread(block, 1, sizeof(block), ctx->input);
         if (got == 0) {
-            break; /* EOF ou erro: tratado após o laço. */
+            break; // chegou no fim ou deu erro: trato depois do laco
         }
 
-        /* Encontra o último byte separador do bloco atual. */
+        // acha o ultimo separador do bloco
         size_t split = got;
         while (split > 0 && is_word_byte(block[split - 1])) {
             --split;
         }
 
         if (split == 0) {
-            /* Bloco inteiro é palavra em formação: acumula no carry e segue. */
+            // o bloco todo e palavra ainda sem terminar: joga no carry e segue
             if (buffer_reserve(&carry, got) < 0) { flag_error(ctx); break; }
             memcpy(carry.data + carry.length, block, got);
             carry.length += got;
             continue;
         }
 
-        /* Monta a unidade: carry acumulado + parte do bloco até o separador. */
+        // monta a unidade: o que tava no carry + o bloco ate o separador
         WorkUnit *unit = unit_create(NULL, carry.length + split, 0);
         if (unit == NULL) { flag_error(ctx); break; }
         if (carry.length > 0) {
@@ -405,7 +395,7 @@ static void *reader_thread(void *arg) {
         memcpy(unit->data + carry.length, block, split);
         queue_push(&ctx->read_queue, unit);
 
-        /* O que restou após o separador vira o novo carry. */
+        // o que sobrou depois do separador vira o carry novo
         carry.length = 0;
         size_t rest = got - split;
         if (rest > 0) {
@@ -420,7 +410,7 @@ static void *reader_thread(void *arg) {
         flag_error(ctx);
     }
 
-    /* Emite a palavra final pendente, se houver. */
+    // emite a ultima palavra que ficou pendente, se tiver
     if (!has_error(ctx) && carry.length > 0) {
         WorkUnit *unit = unit_create(carry.data, carry.length, 0);
         if (unit == NULL) {
@@ -431,7 +421,7 @@ static void *reader_thread(void *arg) {
     }
     free(carry.data);
 
-    /* Sentinela: sinaliza fim para a thread de compactação. */
+    // sentinela: avisa a thread de compactacao que acabou
     WorkUnit *sentinel = unit_create(NULL, 0, 1);
     if (sentinel == NULL) {
         flag_error(ctx);
@@ -441,7 +431,7 @@ static void *reader_thread(void *arg) {
     return NULL;
 }
 
-/* Thread de compactação: consome unidades brutas, produz unidades codificadas. */
+// thread de compactacao: pega unidade bruta e devolve unidade codificada
 static void *compressor_thread(void *arg) {
     CompressorContext *ctx = arg;
     for (;;) {
@@ -452,7 +442,7 @@ static void *compressor_thread(void *arg) {
         }
         if (has_error(ctx)) {
             unit_destroy(in);
-            continue; /* Drena a fila até a sentinela. */
+            continue; // vai esvaziando a fila ate chegar na sentinela
         }
 
         ByteBuffer out = {0};
@@ -465,7 +455,7 @@ static void *compressor_thread(void *arg) {
         }
         unit_destroy(in);
 
-        /* Transfere o buffer codificado para uma unidade de saída. */
+        // passa o buffer codificado pra uma unidade de saida
         WorkUnit *encoded = malloc(sizeof(*encoded));
         if (encoded == NULL) {
             flag_error(ctx);
@@ -478,7 +468,7 @@ static void *compressor_thread(void *arg) {
         queue_push(&ctx->write_queue, encoded);
     }
 
-    /* Repassa a sentinela para a thread de gravação. */
+    // repassa a sentinela pra thread de gravacao
     WorkUnit *sentinel = unit_create(NULL, 0, 1);
     if (sentinel == NULL) {
         flag_error(ctx);
@@ -488,10 +478,10 @@ static void *compressor_thread(void *arg) {
     return NULL;
 }
 
-/* Thread de gravação: grava as unidades codificadas no arquivo de saída. */
+// thread de gravacao: grava as unidades ja codificadas no arquivo de saida
 static void *writer_thread(void *arg) {
     CompressorContext *ctx = arg;
-    uint64_t units_since_publish = 0;
+    uint64_t contador = 0;
 
     for (;;) {
         WorkUnit *unit = queue_pop(&ctx->write_queue);
@@ -512,23 +502,21 @@ static void *writer_thread(void *arg) {
         }
         unit_destroy(unit);
 
-        /* Publicação periódica de progresso para o Monitor. */
-        if (++units_since_publish >= PUBLISH_INTERVAL && !has_error(ctx)) {
+        // de tempos em tempos manda o progresso pro Monitor
+        if (++contador >= PUBLISH_INTERVAL && !has_error(ctx)) {
             if (publish_snapshot(ctx, 0, 0) < 0) {
                 flag_error(ctx);
             }
-            units_since_publish = 0;
+            contador = 0;
         }
     }
     return NULL;
 }
 
-/* ------------------------------------------------------------------ */
-/* Orquestração (thread principal)                                     */
-/* ------------------------------------------------------------------ */
+//-------- ORQUESTRACAO (thread principal) --------
 
-/* Lança build/monitor como processo filho.
- * Retorna o PID do filho em caso de sucesso, -1 em caso de falha. */
+// sobe o build/monitor como processo filho.
+// devolve o PID do filho se deu certo, -1 se falhou
 static pid_t launch_monitor(const char *shm_name, MonitorSharedState *shm_state,
                             int shm_fd) {
     pid_t child = fork();
@@ -545,7 +533,7 @@ static pid_t launch_monitor(const char *shm_name, MonitorSharedState *shm_state,
     return child;
 }
 
-/* Determina o tamanho do arquivo de entrada em bytes. Retorna -1 em erro. */
+// descobre o tamanho do arquivo de entrada em bytes. -1 se der erro
 static long file_size(const char *path) {
     FILE *file = fopen(path, "rb");
     if (file == NULL) {
@@ -594,15 +582,15 @@ int compressor_run(const char *dict_path,
         return 1;
     }
 
-    /* A partir daqui qualquer falha deve publicar uma snapshot final com
-     * failed = 1 e aguardar o Monitor, para não deixá-lo bloqueado. */
+    // daqui pra frente, se der erro, tem que publicar uma snapshot final com
+    // failed = 1 e esperar o Monitor, senao ele fica travado esperando
     CompressorContext ctx = {0};
     ctx.dict = dict;
     ctx.shm_state = shm_state;
     pthread_mutex_init(&ctx.error_mutex, NULL);
     pthread_mutex_init(&ctx.stats.mutex, NULL);
 
-    int queues_ready = 0;
+    int filas_ok = 0;
     int threads_started = 0;
     pthread_t reader, compressor, writer;
 
@@ -636,15 +624,15 @@ int compressor_run(const char *dict_path,
         flag_error(&ctx);
         goto finalize;
     }
-    queues_ready = 1;
+    filas_ok = 1;
 
     if (pthread_create(&reader, NULL, reader_thread, &ctx) != 0 ||
         pthread_create(&compressor, NULL, compressor_thread, &ctx) != 0 ||
         pthread_create(&writer, NULL, writer_thread, &ctx) != 0) {
         fprintf(stderr, "[ERRO] Falha ao criar as threads.\n");
         flag_error(&ctx);
-        /* Não há como encerrar threads parcialmente criadas com segurança;
-         * aborta antes de iniciar o pipeline. */
+        // nao da pra matar threads criadas pela metade de um jeito seguro,
+        // entao aborta antes de comecar o pipeline
         goto finalize;
     }
     threads_started = 1;
@@ -663,7 +651,7 @@ finalize:
     if (ctx.input != NULL) {
         fclose(ctx.input);
     }
-    if (queues_ready) {
+    if (filas_ok) {
         queue_destroy(&ctx.read_queue);
         queue_destroy(&ctx.write_queue);
     }
